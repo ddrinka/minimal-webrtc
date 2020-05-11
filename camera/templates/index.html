@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Simple WebRTC</title>
+    <style>
+body.justVideo {
+  margin: 0;
+  overflow: hidden;
+}
+    </style>
+  </head>
+  <body>
+    <a id="qrcodelink" style="display:none;"><img id="qrcode" /></a>
+    <span id="status"></span>
+    <div id="videos" style="display:none;">
+      <video id="remoteView" width="100%" autoplay muted></video>
+      <video id="selfView" width="200" height="150" autoplay></video>
+    </div>
+    <script >
+      const create = (container, type) => container.appendChild(document.createElement(type));
+
+      const body = document.querySelector("body");
+      const out = document.getElementById("status");
+      const qrcode = document.getElementById("qrcode");
+      const qrcodelink = document.getElementById("qrcodelink");
+      const remoteView = document.getElementById("remoteView");
+      remoteView.style.display = 'none';
+      out.innerText += "Loading...\n";
+
+      function getRoomName() {
+        JSON.parse(document.getElementById('room-name').textContent);
+      }
+
+      let roomName = window.location.hash;
+      let isHost = roomName === undefined || !roomName;
+      if (isHost) {
+        // From https://stackoverflow.com/a/1349426
+        function makeid(length) {
+          var result           = '';
+          var characters       = 'abcdefghijklmnopqrstuvwxyz';
+          var charactersLength = characters.length;
+          for (var i = 0; i < length; i++) {
+            result += characters.charAt(Math.floor(Math.random() * charactersLength));
+          }
+          return result;
+        }
+
+        roomName = makeid(8);
+        qrcodelink.href = window.location.href.split('#')[0] + '#' + roomName;
+        qrcode.src = window.location.href.split('#')[0] + roomName + '/qr';
+        qrcodelink.style.display = '';
+      } else {
+        roomName = roomName.substring(1);
+        qrcodelink.style.display = 'none';
+      }
+
+      out.innerText += "Room: " + roomName + "\n";
+
+      var webSocket = undefined;
+
+      function sendJson(data) {
+        const toSend = JSON.stringify(data);
+        out.innerText += "Sending message...\n";
+        create(out, 'pre').innerText = toSend.split('\\r\\n').join('\r\n');
+        create(out, 'br');
+        webSocket.send(toSend);
+      }
+
+      var pc = undefined;
+      function createRTCPeerConnection() {
+        const pc = new RTCPeerConnection();
+        out.innerText += "Created RTCPeerConnection.\n";
+
+        pc.onicecandidate = ({candidate}) => sendJson({candidate});
+
+        // let the "negotiationneeded" event trigger offer generation
+        pc.onnegotiationneeded = async function () {
+          out.innerText += "In pc.onnegotiationneeded...\n";
+          await pc.setLocalDescription(await pc.createOffer());
+          sendJson({
+            description: pc.localDescription
+          });
+        }
+
+        pc.ontrack = ({streams: [stream]}) => {
+          out.innerText += "In pc.ontrack...\n";
+
+          remoteView.srcObject = stream;
+          remoteView.style.display = '';
+          remoteView.play();
+          out.innerText += "Set srcObject\n";
+          out.style.display = 'none';
+          videos.style.display = '';
+          body.classList.add('justVideo');
+        };
+
+        return pc;
+      }
+
+      async function receiveMessage(e) {
+        if (pc === undefined) pc = createRTCPeerConnection();
+
+        qrcode.style.display = 'none';
+        out.innerText += "In webSocket.onmessage...\n";
+        create(out, 'pre').innerText = e.data.split('\\r\\n').join('\r\n');
+        create(out, 'br');
+        const data = JSON.parse(e.data);
+        if (data.description) {
+          await pc.setRemoteDescription(data.description);
+          if (data.description.type == "offer") {
+            out.innerText += "Got an offer...\n";
+            await pc.setLocalDescription(await pc.createAnswer());
+            sendJson({
+              description: pc.localDescription
+            });
+          }
+        } else if (data.candidate) {
+          out.innerText += "Adding ice candidate...\n";
+          await pc.addIceCandidate(data.candidate);
+        }
+      };
+
+      function createWebSocket() {
+        const webSocket = new WebSocket(
+            'ws' + (window.location.protocol == 'https:' ? 's' : '') + '://'
+            + window.location.host
+            + '/camera/ws/' + (isHost ? 'host' : 'client') + '/'
+            + roomName
+            + '/'
+        );
+        out.innerText += "Created WebSocket.\n";
+
+        webSocket.onclose = function(e) {
+          console.error('Web socket closed unexpectedly');
+        };
+
+        webSocket.onmessage = receiveMessage;
+
+        return webSocket;
+      }
+
+      webSocket = createWebSocket();
+
+      // get a local stream, show it in a self-view and add it to be sent
+      async function startStreaming() {
+        pc = createRTCPeerConnection();
+
+        const videoConstraints = { advanced: [{facingMode: "environment"}] };
+        out.innerText += "Created videoConstraints.\n";
+        const stream = await navigator.mediaDevices.getUserMedia({ "audio": false, "video": videoConstraints });
+        out.innerText += "Created stream.\n";
+        selfView.srcObject = stream;
+        for (const track of stream.getTracks()) {
+          out.innerText += "Added track.\n";
+          pc.addTrack(track, stream);
+        }
+      }
+
+      if (!isHost) {
+        startStreaming()
+          .then(() => {
+            out.innerText += "startStreaming() finished.\n";
+          })
+          .catch(e => {
+            out.innerText += "startStreaming() errored: " + e.message + "\n";
+          })
+          ;
+      }
+      out.innerText += "Finished <script> block.\n";
+    </script>
+  </body>
+</html>
