@@ -8,14 +8,65 @@ body.justVideo {
   margin: 0;
   overflow: hidden;
 }
+#selfView {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  border: 5px solid blue;
+}
+#unmute {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  font-size: 4em;
+}
+form {
+  background: lightgray;
+  border: solid gold 5px;
+  display: inline-block;
+  display: table;
+}
+form label {
+  display: table-row;
+}
+#status {
+  clear: both;
+}
     </style>
   </head>
   <body>
     <a id="qrcodelink" style="display:none;"><img id="qrcode" /></a>
-    <span id="status"></span>
-    <div id="videos" style="display:none;">
-      <video id="remoteView" width="100%" autoplay muted></video>
-      <video id="selfView" width="200" height="150" autoplay></video>
+    <form name="settings">
+      <label>
+        Recieve remote video:
+        <select name="client-video">
+          <option value="none">none</option>
+          <option value="environment" selected>rear camera</option>
+          <option value="user">front camera</option>
+          <option value="screen">screen share</option>
+        </select>
+      </label>
+      <label>
+        Recieve remote audio:
+        <input name="client-audio" type="checkbox" value="true" />
+      </label>
+      <label>
+        Transmit video:
+        <select name="host-video">
+          <option value="none">none</option>
+          <option value="screen">screen share</option>
+        </select>
+      </label>
+      <label>
+        Transmit audio:
+        <input name="host-audio" type="checkbox" value="true" />
+      </label>
+    </form>
+    <div id="status"></div>
+    <div id="videos">
+      <button id="unmute" style="display:none;">Unmute</button>
+      <video id="remoteView" width="100%" autoplay muted style="display:none;"></video>
+      <video id="selfView" width="200" height="150" autoplay muted style="display:none;"></video>
     </div>
     <script >
       const create = (container, type) => container.appendChild(document.createElement(type));
@@ -25,8 +76,26 @@ body.justVideo {
       const qrcode = document.getElementById("qrcode");
       const qrcodelink = document.getElementById("qrcodelink");
       const remoteView = document.getElementById("remoteView");
-      remoteView.style.display = 'none';
+      const selfView = document.getElementById("selfView");
+      const unmute = document.getElementById("unmute");
+      const form = document.forms["settings"];
+
       out.innerText += "Loading...\n";
+
+      unmute.addEventListener("click", _ => {
+        remoteView.muted = false;
+        unmute.style.display = 'none';
+      });
+
+      var settings = undefined;
+      function readSettingsForm() {
+        const obj = {};
+        for (const el of form.elements) {
+          obj[el.name] = el.type == 'checkbox' ? el.checked : el.value;
+          el.disabled = true;
+        }
+        return obj;
+      }
 
       function getRoomName() {
         JSON.parse(document.getElementById('room-name').textContent);
@@ -53,6 +122,7 @@ body.justVideo {
       } else {
         roomName = roomName.substring(1);
         qrcodelink.style.display = 'none';
+        form.style.display = 'none';
       }
 
       out.innerText += "Room: " + roomName + "\n";
@@ -91,6 +161,7 @@ body.justVideo {
           remoteView.play();
           out.innerText += "Set srcObject\n";
           out.style.display = 'none';
+          form.style.display = 'none';
           videos.style.display = '';
           body.classList.add('justVideo');
         };
@@ -98,15 +169,73 @@ body.justVideo {
         return pc;
       }
 
-      async function receiveMessage(e) {
-        if (pc === undefined) pc = createRTCPeerConnection();
+      // get a local stream, show it in a self-view and add it to be sent
+      async function startStreaming() {
+        const otherAudioSettings = isHost
+          ? settings['client-audio']
+          : settings['host-audio'];
+        if (otherAudioSettings) {
+          unmute.style.display = '';
+        }
 
+        if (pc !== undefined) return;
+        pc = createRTCPeerConnection();
+
+        const videoSettings = isHost
+          ? settings['host-video']
+          : settings['client-video'];
+        out.innerText += "videoSettings=" + videoSettings;
+        const audioSettings = isHost
+          ? settings['host-audio']
+          : settings['client-audio'];
+        out.innerText += "audioSettings=" + audioSettings;
+
+        if (videoSettings == 'screen') alert('screen share unsupported');
+
+        const videoConstraints = videoSettings == 'none'
+          ? false
+          : { advanced: [{facingMode: videoSettings}] };
+        out.innerText += "Created videoConstraints.\n";
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioSettings,
+          video: videoConstraints
+        });
+        out.innerText += "Created stream.\n";
+        if (videoConstraints) {
+          selfView.srcObject = stream;
+          selfView.style.display = '';
+        }
+        for (const track of stream.getTracks()) {
+          out.innerText += "Added track.\n";
+          pc.addTrack(track, stream);
+        }
+      }
+      function startStartingWithErorrHandling() {
+        startStreaming()
+          .then(() => {
+            out.innerText += "startStreaming() finished.\n";
+          })
+          .catch(e => {
+            out.innerText += "startStreaming() errored: " + e.message + "\n";
+          });
+      }
+
+      async function receiveMessage(e) {
         qrcode.style.display = 'none';
         out.innerText += "In webSocket.onmessage...\n";
         create(out, 'pre').innerText = e.data.split('\\r\\n').join('\r\n');
         create(out, 'br');
         const data = JSON.parse(e.data);
-        if (data.description) {
+        if (data.requestSettings) {
+          settings = readSettingsForm();
+          sendJson({
+            settings: settings
+          });
+        } else if (data.settings) {
+          settings = data.settings;
+          startStartingWithErorrHandling();
+        } else if (data.description) {
+          startStartingWithErorrHandling();
           await pc.setRemoteDescription(data.description);
           if (data.description.type == "offer") {
             out.innerText += "Got an offer...\n";
@@ -116,6 +245,7 @@ body.justVideo {
             });
           }
         } else if (data.candidate) {
+          startStartingWithErorrHandling();
           out.innerText += "Adding ice candidate...\n";
           await pc.addIceCandidate(data.candidate);
         }
@@ -132,7 +262,10 @@ body.justVideo {
         out.innerText += "Created WebSocket.\n";
 
         webSocket.onclose = function(e) {
-          console.error('Web socket closed unexpectedly');
+          out.innerText += 'WebSocket closed unexpectedly: ' + e + '\n';
+        };
+        webSocket.onerror = function(e) {
+          out.innerText += 'WebSocket error: ' + e + '\n';
         };
 
         webSocket.onmessage = receiveMessage;
@@ -142,31 +275,10 @@ body.justVideo {
 
       webSocket = createWebSocket();
 
-      // get a local stream, show it in a self-view and add it to be sent
-      async function startStreaming() {
-        pc = createRTCPeerConnection();
-
-        const videoConstraints = { advanced: [{facingMode: "environment"}] };
-        out.innerText += "Created videoConstraints.\n";
-        const stream = await navigator.mediaDevices.getUserMedia({ "audio": false, "video": videoConstraints });
-        out.innerText += "Created stream.\n";
-        selfView.srcObject = stream;
-        for (const track of stream.getTracks()) {
-          out.innerText += "Added track.\n";
-          pc.addTrack(track, stream);
-        }
-      }
-
       if (!isHost) {
-        startStreaming()
-          .then(() => {
-            out.innerText += "startStreaming() finished.\n";
-          })
-          .catch(e => {
-            out.innerText += "startStreaming() errored: " + e.message + "\n";
-          })
-          ;
+        webSocket.onopen = _ => sendJson({requestSettings: true});
       }
+
       out.innerText += "Finished <script> block.\n";
     </script>
   </body>
