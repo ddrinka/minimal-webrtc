@@ -14,7 +14,7 @@ body.justVideo {
   bottom: 0;
   border: 5px solid blue;
 }
-#unmute {
+#unmute, #start {
   position: fixed;
   top: 0;
   width: 100%;
@@ -43,6 +43,7 @@ form label {
           <option value="none">none</option>
           <option value="environment" selected>rear camera</option>
           <option value="user">front camera</option>
+          <option value="true" selected>any camera</option>
           <option value="screen">screen share</option>
         </select>
       </label>
@@ -53,7 +54,8 @@ form label {
       <label>
         Transmit video:
         <select name="host-video">
-          <option value="none">none</option>
+          <option value="none" selected>none</option>
+          <option value="true">any camera</option>
           <option value="screen">screen share</option>
         </select>
       </label>
@@ -65,6 +67,7 @@ form label {
     <div id="status"></div>
     <div id="videos">
       <button id="unmute" style="display:none;">Unmute</button>
+      <button id="start" style="display:none;">Start Streaming</button>
       <video id="remoteView" width="100%" autoplay muted style="display:none;"></video>
       <video id="selfView" width="200" height="150" autoplay muted style="display:none;"></video>
     </div>
@@ -77,6 +80,7 @@ form label {
       const qrcodelink = document.getElementById("qrcodelink");
       const remoteView = document.getElementById("remoteView");
       const selfView = document.getElementById("selfView");
+      const start = document.getElementById("start");
       const unmute = document.getElementById("unmute");
       const form = document.forms["settings"];
 
@@ -170,7 +174,7 @@ form label {
       }
 
       // get a local stream, show it in a self-view and add it to be sent
-      async function startStreaming() {
+      async function startStreaming(fromButton) {
         const otherAudioSettings = isHost
           ? settings['client-audio']
           : settings['host-audio'];
@@ -178,28 +182,47 @@ form label {
           unmute.style.display = '';
         }
 
-        if (pc !== undefined) return;
-        pc = createRTCPeerConnection();
-
         const videoSettings = isHost
           ? settings['host-video']
           : settings['client-video'];
-        out.innerText += "videoSettings=" + videoSettings;
+        out.innerText += "videoSettings=" + videoSettings + "\n";
         const audioSettings = isHost
           ? settings['host-audio']
           : settings['client-audio'];
-        out.innerText += "audioSettings=" + audioSettings;
+        out.innerText += "audioSettings=" + audioSettings + "\n";
 
-        if (videoSettings == 'screen') alert('screen share unsupported');
+        if (videoSettings == 'screen' && !fromButton) {
+          start.style.display = '';
+          return;
+        }
+        start.style.display = 'none';
+
+        if (isHost) {
+          sendJson({
+            settings: settings
+          });
+        }
+
+        if (pc !== undefined) return;
+        pc = createRTCPeerConnection();
 
         const videoConstraints = videoSettings == 'none'
           ? false
-          : { advanced: [{facingMode: videoSettings}] };
+          : videoSettings == 'true'
+            ? true
+            : { advanced: [{facingMode: videoSettings}] };
         out.innerText += "Created videoConstraints.\n";
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: audioSettings,
-          video: videoConstraints
-        });
+        if (!videoConstraints && !audioSettings) return;
+
+        const stream = videoSettings == 'screen'
+          ? await navigator.mediaDevices.getDisplayMedia({
+            audio: audioSettings,
+            video: true
+          })
+          : await navigator.mediaDevices.getUserMedia({
+            audio: audioSettings,
+            video: videoConstraints
+          });
         out.innerText += "Created stream.\n";
         if (videoConstraints) {
           selfView.srcObject = stream;
@@ -210,8 +233,8 @@ form label {
           pc.addTrack(track, stream);
         }
       }
-      function startStartingWithErorrHandling() {
-        startStreaming()
+      function startStartingWithErorrHandling(fromButton) {
+        startStreaming(fromButton)
           .then(() => {
             out.innerText += "startStreaming() finished.\n";
           })
@@ -219,6 +242,10 @@ form label {
             out.innerText += "startStreaming() errored: " + e.message + "\n";
           });
       }
+
+      start.addEventListener("click", _ => {
+        startStartingWithErorrHandling(true)
+      });
 
       async function receiveMessage(e) {
         qrcode.style.display = 'none';
@@ -228,14 +255,11 @@ form label {
         const data = JSON.parse(e.data);
         if (data.requestSettings) {
           settings = readSettingsForm();
-          sendJson({
-            settings: settings
-          });
+          startStartingWithErorrHandling(false);
         } else if (data.settings) {
           settings = data.settings;
-          startStartingWithErorrHandling();
+          startStartingWithErorrHandling(false);
         } else if (data.description) {
-          startStartingWithErorrHandling();
           await pc.setRemoteDescription(data.description);
           if (data.description.type == "offer") {
             out.innerText += "Got an offer...\n";
@@ -245,7 +269,6 @@ form label {
             });
           }
         } else if (data.candidate) {
-          startStartingWithErorrHandling();
           out.innerText += "Adding ice candidate...\n";
           await pc.addIceCandidate(data.candidate);
         }
