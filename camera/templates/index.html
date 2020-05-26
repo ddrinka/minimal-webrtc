@@ -92,13 +92,19 @@ form label {
       });
 
       var settings = undefined;
-      function readSettingsForm() {
+      function readSettingsForm(disableForm) {
         const obj = {};
         for (const el of form.elements) {
           obj[el.name] = el.type == 'checkbox' ? el.checked : el.value;
-          el.disabled = true;
+          if (disableForm) el.disabled = true;
         }
         return obj;
+      }
+
+      for (const el of form.elements) {
+        el.addEventListener("change", _ => {
+          window.location.hash = JSON.stringify(readSettingsForm(false));
+        });
       }
 
       function getRoomName() {
@@ -107,6 +113,27 @@ form label {
 
       let roomName = window.location.hash;
       let isHost = roomName === undefined || !roomName;
+      if (roomName.startsWith("#{")) {
+        roomName = undefined;
+        isHost = true;
+
+        try {
+          const hash = decodeURI(window.location.hash);
+          out.innerText += "Reading settings from hash: " + hash + "\n";
+          settings = JSON.parse(hash.substring(1));
+          for (const name in settings) {
+            const el = form.elements[name];
+            const value = settings[name];
+            if (el.type == 'checkbox') {
+              el.checked = value;
+            } else {
+              el.value = value;
+            }
+          }
+        } catch (error) {
+          out.innerText += "Failed to read settings from hash: " + error + "\n";
+        }
+      }
       if (isHost) {
         // From https://stackoverflow.com/a/1349426
         function makeid(length) {
@@ -254,7 +281,7 @@ form label {
         create(out, 'br');
         const data = JSON.parse(e.data);
         if (data.requestSettings) {
-          settings = readSettingsForm();
+          settings = readSettingsForm(true);
           startStartingWithErorrHandling(false);
         } else if (data.settings) {
           settings = data.settings;
