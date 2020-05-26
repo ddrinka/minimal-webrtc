@@ -91,4 +91,5 @@ CHANNEL_LAYERS = {
     },
 }
 
+# https://docs.djangoproject.com/en/3.0/ref/settings/#secure-proxy-ssl-header
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
