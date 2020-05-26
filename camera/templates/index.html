@@ -222,11 +222,14 @@ form label {
           remoteView.srcObject = stream;
           log("Set srcObject");
           remoteView.play();
-          out.innerText += "Set srcObject\n";
-          out.style.display = 'none';
-          form.style.display = 'none';
-          videos.style.display = '';
-          body.classList.add('justVideo');
+
+          if (stream.getVideoTracks().length > 0) {
+            remoteView.style.display = '';
+            out.style.display = 'none';
+            form.style.display = 'none';
+            videos.style.display = '';
+            body.classList.add('justVideo');
+          }
         };
 
         return pc;
