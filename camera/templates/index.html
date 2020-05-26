@@ -38,6 +38,18 @@ form {
 form label {
   display: table-row;
 }
+#status {
+  display: table;
+}
+#status .log-entry {
+  display: block;
+  background: lightblue;
+  border: solid black 2px;
+  margin: 2px;
+}
+#status .log-entry:nth-child(odd) {
+  background: lightyellow;
+}
     </style>
   </head>
   <body>
@@ -90,7 +102,21 @@ form label {
       const unmute = document.getElementById("unmute");
       const form = document.forms["settings"];
 
-      out.innerText += "Loading...\n";
+      function _log(str, tag) {
+        const logEntry = document.createElement(tag);
+        logEntry.innerText = str;
+        logEntry.classList.add('log-entry');
+        out.appendChild(logEntry);
+      }
+      function log(str) {
+        _log(str, 'span');
+      }
+
+      function logPre(str) {
+        _log(str.split('\\r\\n').join('\r\n'), 'pre');
+      }
+
+      log("Loading...");
 
       unmute.addEventListener("click", _ => {
         remoteView.muted = false;
@@ -125,7 +151,8 @@ form label {
 
         try {
           const hash = decodeURI(window.location.hash);
-          out.innerText += "Reading settings from hash: " + hash + "\n";
+          log("Reading settings from hash:");
+          logPre(hash);
           settings = JSON.parse(hash.substring(1));
           for (const name in settings) {
             const el = form.elements[name];
@@ -137,7 +164,7 @@ form label {
             }
           }
         } catch (error) {
-          out.innerText += "Failed to read settings from hash: " + error + "\n";
+          log("Failed to read settings from hash: " + error);
         }
       }
       if (isHost) {
@@ -162,28 +189,27 @@ form label {
         form.style.display = 'none';
       }
 
-      out.innerText += "Room: " + roomName + "\n";
+      log("Room: " + roomName);
 
       var webSocket = undefined;
 
       function sendJson(data) {
         const toSend = JSON.stringify(data);
-        out.innerText += "Sending message...\n";
-        create(out, 'pre').innerText = toSend.split('\\r\\n').join('\r\n');
-        create(out, 'br');
+        log("Sending message...");
+        logPre(toSend);
         webSocket.send(toSend);
       }
 
       var pc = undefined;
       function createRTCPeerConnection() {
         const pc = new RTCPeerConnection();
-        out.innerText += "Created RTCPeerConnection.\n";
+        log("Created RTCPeerConnection.");
 
         pc.onicecandidate = ({candidate}) => sendJson({candidate});
 
         // let the "negotiationneeded" event trigger offer generation
         pc.onnegotiationneeded = async function () {
-          out.innerText += "In pc.onnegotiationneeded...\n";
+          log("In pc.onnegotiationneeded...");
           await pc.setLocalDescription(await pc.createOffer());
           sendJson({
             description: pc.localDescription
@@ -191,10 +217,10 @@ form label {
         }
 
         pc.ontrack = ({streams: [stream]}) => {
-          out.innerText += "In pc.ontrack...\n";
+          log("In pc.ontrack...");
 
           remoteView.srcObject = stream;
-          remoteView.style.display = '';
+          log("Set srcObject");
           remoteView.play();
           out.innerText += "Set srcObject\n";
           out.style.display = 'none';
@@ -218,11 +244,11 @@ form label {
         const videoSettings = isHost
           ? settings['host-video']
           : settings['client-video'];
-        out.innerText += "videoSettings=" + videoSettings + "\n";
+        log("videoSettings=" + videoSettings);
         const audioSettings = isHost
           ? settings['host-audio']
           : settings['client-audio'];
-        out.innerText += "audioSettings=" + audioSettings + "\n";
+        log("audioSettings=" + audioSettings);
 
         if (videoSettings == 'screen' && !fromButton) {
           start.style.display = '';
@@ -244,7 +270,7 @@ form label {
           : videoSettings == 'true'
             ? true
             : { advanced: [{facingMode: videoSettings}] };
-        out.innerText += "Created videoConstraints.\n";
+        log("Created videoConstraints.");
         if (!videoConstraints && !audioSettings) return;
 
         const stream = videoSettings == 'screen'
@@ -256,23 +282,23 @@ form label {
             audio: audioSettings,
             video: videoConstraints
           });
-        out.innerText += "Created stream.\n";
+        log("Created stream.");
         if (videoConstraints) {
           selfView.srcObject = stream;
           selfView.style.display = '';
         }
         for (const track of stream.getTracks()) {
-          out.innerText += "Added track.\n";
+          log("Added track.");
           pc.addTrack(track, stream);
         }
       }
       function startStartingWithErorrHandling(fromButton) {
         startStreaming(fromButton)
           .then(() => {
-            out.innerText += "startStreaming() finished.\n";
+            log("startStreaming() finished.");
           })
           .catch(e => {
-            out.innerText += "startStreaming() errored: " + e.message + "\n";
+            log("startStreaming() errored: " + e.message);
           });
       }
 
@@ -282,9 +308,8 @@ form label {
 
       async function receiveMessage(e) {
         qrcode.style.display = 'none';
-        out.innerText += "In webSocket.onmessage...\n";
-        create(out, 'pre').innerText = e.data.split('\\r\\n').join('\r\n');
-        create(out, 'br');
+        log("In webSocket.onmessage...");
+        logPre(e.data);
         const data = JSON.parse(e.data);
         if (data.requestSettings) {
           settings = readSettingsForm(true);
@@ -295,14 +320,14 @@ form label {
         } else if (data.description) {
           await pc.setRemoteDescription(data.description);
           if (data.description.type == "offer") {
-            out.innerText += "Got an offer...\n";
+            log("Got an offer...");
             await pc.setLocalDescription(await pc.createAnswer());
             sendJson({
               description: pc.localDescription
             });
           }
         } else if (data.candidate) {
-          out.innerText += "Adding ice candidate...\n";
+          log("Adding ice candidate...");
           await pc.addIceCandidate(data.candidate);
         }
       };
@@ -315,13 +340,13 @@ form label {
             + roomName
             + '/'
         );
-        out.innerText += "Created WebSocket.\n";
+        log("Created WebSocket.");
 
         webSocket.onclose = function(e) {
-          out.innerText += 'WebSocket closed unexpectedly: ' + e + '\n';
+          log('WebSocket closed unexpectedly: ' + e);
         };
         webSocket.onerror = function(e) {
-          out.innerText += 'WebSocket error: ' + e + '\n';
+          log('WebSocket error: ' + e);
         };
 
         webSocket.onmessage = receiveMessage;
@@ -335,7 +360,7 @@ form label {
         webSocket.onopen = _ => sendJson({requestSettings: true});
       }
 
-      out.innerText += "Finished <script> block.\n";
+      log("Finished <script> block.");
     </script>
   </body>
 </html>
