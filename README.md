@@ -1,5 +1,7 @@
 # minimal-webrtc
 
+Try it out at https://apps.aweirdimagination.net/camera/
+
 Create a WebRTC audio/video connection between two devices with minimal
 setup: basic usage is to open the page on one device and send the
 generated link to (or scan the QR code on) the other device and a
