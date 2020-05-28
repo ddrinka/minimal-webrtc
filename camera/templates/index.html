@@ -149,10 +149,6 @@ form label {
         });
       }
 
-      function getRoomName() {
-        JSON.parse(document.getElementById('room-name').textContent);
-      }
-
       let roomName = window.location.hash;
       let isHost = roomName === undefined || !roomName;
       if (roomName.startsWith("#{")) {
