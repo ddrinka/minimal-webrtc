@@ -18,10 +18,11 @@ server {
 
 	server_name _;
 
-	location / {
-		try_files $uri $uri/ @proxy_to_app;
+	location /camera/ {
+		alias /path/to/minimal-webrtc/wwwroot/;
+		try_files $uri $uri/ @minimal_webrtc;
 	}
-	location @proxy_to_app {
+	location @minimal_webrtc {
 		proxy_pass http://minimal-webrtc;
 
 		proxy_http_version 1.1;
