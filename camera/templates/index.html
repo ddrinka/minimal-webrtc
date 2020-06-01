@@ -204,6 +204,15 @@ form label {
 
       var pc = undefined;
       var dc = undefined;
+
+      function sendOffer() {
+        if (pc.iceGatheringState == "complete") {
+          sendJson({
+            description: pc.localDescription
+          });
+        }
+      }
+
       function createRTCPeerConnection() {
         const pc = new RTCPeerConnection();
         log("Created RTCPeerConnection.");
@@ -214,19 +223,17 @@ form label {
         pc.oniceconnectionstatechange = e => {
           log("pc.oniceconnectionstatechange: " + pc.iceConnectionState);
         }
-        pc.onicegatheringstatechange = e => {
+        pc.onicegatheringstatechange = async function(e) {
           log("pc.onicegatheringstatechange: " + pc.iceGatheringState);
+          sendOffer();
         }
 
-        pc.onicecandidate = ({candidate}) => sendJson({candidate});
-
         // let the "negotiationneeded" event trigger offer generation
+        //  ... but only once icegathering is complete.
         pc.onnegotiationneeded = async function () {
           log("In pc.onnegotiationneeded...");
           await pc.setLocalDescription(await pc.createOffer());
-          sendJson({
-            description: pc.localDescription
-          });
+          sendOffer();
         }
 
         pc.ontrack = ({streams: [stream]}) => {
@@ -355,9 +362,7 @@ form label {
           if (data.description.type == "offer") {
             log("Got an offer...");
             await pc.setLocalDescription(await pc.createAnswer());
-            sendJson({
-              description: pc.localDescription
-            });
+            sendOffer();
           }
         } else if (data.candidate) {
           if (pc == undefined) pc = createRTCPeerConnection();
