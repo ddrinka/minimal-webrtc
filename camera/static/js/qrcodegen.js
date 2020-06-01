@@ -1,0 +1,1 @@
+../../../external/qr-code-generator/qrcodegen.js
