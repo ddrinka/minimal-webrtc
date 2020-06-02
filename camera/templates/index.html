@@ -269,7 +269,7 @@ form label {
             log("Data channel open, sending settings...")
             settings = readSettingsForm(true);
             sendJson({settings});
-            startStartingWithErorrHandling(false);
+            startStreamingWithErorrHandling(false);
           }
         }
 
@@ -350,9 +350,6 @@ form label {
         if (data.ready) {
           // Ready message means client is open and ready for connection.
           pc = createRTCPeerConnection();
-        } else if (data.requestSettings) {
-          settings = readSettingsForm(true);
-          startStreamingWithErorrHandling(false);
         } else if (data.settings) {
           settings = data.settings;
           startStreamingWithErorrHandling(false);
@@ -364,10 +361,6 @@ form label {
             await pc.setLocalDescription(await pc.createAnswer());
             sendOffer();
           }
-        } else if (data.candidate) {
-          if (pc == undefined) pc = createRTCPeerConnection();
-          log("Adding ice candidate...");
-          await pc.addIceCandidate(data.candidate);
         }
       };
 
