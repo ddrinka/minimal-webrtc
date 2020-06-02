@@ -205,25 +205,45 @@ form label {
 
       function sendJson(data) {
         const toSend = JSON.stringify(data);
-        log("Sending message...");
+        const dcReady = dc && dc.readyState == "open";
+        const method = dcReady ? "dataConnection" : "webSocket";
+        log("Sending message via " + method + "...");
         logPre(toSend);
-        webSocket.send(toSend);
+        (dcReady ? dc : webSocket).send(toSend);
       }
 
       var pc = undefined;
+      var dc = undefined;
+
+      function sendOffer() {
+        if (pc.iceGatheringState == "complete") {
+          sendJson({
+            description: pc.localDescription
+          });
+        }
+      }
+
       function createRTCPeerConnection() {
         const pc = new RTCPeerConnection();
         log("Created RTCPeerConnection.");
 
-        pc.onicecandidate = ({candidate}) => sendJson({candidate});
+        pc.onsignalingstatechange = e => {
+          log("pc.onsignalingstatechange: " + pc.signalingState);
+        }
+        pc.oniceconnectionstatechange = e => {
+          log("pc.oniceconnectionstatechange: " + pc.iceConnectionState);
+        }
+        pc.onicegatheringstatechange = async function(e) {
+          log("pc.onicegatheringstatechange: " + pc.iceGatheringState);
+          sendOffer();
+        }
 
         // let the "negotiationneeded" event trigger offer generation
+        //  ... but only once icegathering is complete.
         pc.onnegotiationneeded = async function () {
           log("In pc.onnegotiationneeded...");
           await pc.setLocalDescription(await pc.createOffer());
-          sendJson({
-            description: pc.localDescription
-          });
+          sendOffer();
         }
 
         pc.ontrack = ({streams: [stream]}) => {
@@ -242,11 +262,33 @@ form label {
           }
         };
 
+        pc.ondatachannel = e => {
+          dc = e.channel;
+          dc.onmessage = e => {
+            receiveMessage({source: "dataChannel", data: e.data});
+          }
+          log('Data channel initialized.');
+        }
+
+        if (isHost) {
+          dc = pc.createDataChannel('data');
+          dc.onmessage = e => {
+            receiveMessage({source: "dataChannel", data: e.data});
+          }
+          dc.onopen = e => {
+            log("Data channel open, sending settings...")
+            settings = readSettingsForm(true);
+            sendJson({settings});
+            startStreamingWithErorrHandling(false);
+          }
+        }
+
         return pc;
       }
 
       // get a local stream, show it in a self-view and add it to be sent
       async function startStreaming(fromButton) {
+        log('In startStreaming(fromButton=' + fromButton + ')...');
         const otherAudioSettings = isHost
           ? settings['client-audio']
           : settings['host-audio'];
@@ -268,15 +310,6 @@ form label {
           return;
         }
         start.style.display = 'none';
-
-        if (isHost) {
-          sendJson({
-            settings: settings
-          });
-        }
-
-        if (pc !== undefined) return;
-        pc = createRTCPeerConnection();
 
         const videoConstraints = videoSettings == 'none'
           ? false
@@ -321,27 +354,23 @@ form label {
 
       async function receiveMessage(e) {
         qrcode.style.display = 'none';
-        log("In webSocket.onmessage...");
+        log("In receiveMessage from " + e.source + "...");
         logPre(e.data);
         const data = JSON.parse(e.data);
-        if (data.requestSettings) {
-          settings = readSettingsForm(true);
-          startStreamingWithErorrHandling(false);
+        if (data.ready) {
+          // Ready message means client is open and ready for connection.
+          pc = createRTCPeerConnection();
         } else if (data.settings) {
           settings = data.settings;
           startStreamingWithErorrHandling(false);
         } else if (data.description) {
+          if (pc == undefined) pc = createRTCPeerConnection();
           await pc.setRemoteDescription(data.description);
           if (data.description.type == "offer") {
             log("Got an offer...");
             await pc.setLocalDescription(await pc.createAnswer());
-            sendJson({
-              description: pc.localDescription
-            });
+            sendOffer();
           }
-        } else if (data.candidate) {
-          log("Adding ice candidate...");
-          await pc.addIceCandidate(data.candidate);
         }
       };
 
@@ -362,7 +391,9 @@ form label {
           log('WebSocket error: ' + e);
         };
 
-        webSocket.onmessage = receiveMessage;
+        webSocket.onmessage = e => {
+          receiveMessage({source: "webSocket", data: e.data});
+        }
 
         return webSocket;
       }
@@ -370,7 +401,10 @@ form label {
       webSocket = createWebSocket();
 
       if (!isHost) {
-        webSocket.onopen = _ => sendJson({requestSettings: true});
+        // To make serverless and server mode more similar,
+        //  always make the first RTCPeerConnection offer from the host,
+        //  so here just notify the host to start the process.
+        webSocket.onopen = _ => sendJson({ready: true});
       }
 
       log("Finished <script> block.");
