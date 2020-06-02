@@ -4,3 +4,6 @@
 [submodule "external/base64.js"]
 	path = external/base64.js
 	url = https://gist.github.com/72c423f727d395eeaa09697058238727.git
+[submodule "external/qr-scanner"]
+	path = external/qr-scanner
+	url = https://github.com/nimiq/qr-scanner.git

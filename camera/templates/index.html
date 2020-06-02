@@ -113,10 +113,11 @@ form label {
         <input name="debug" type="checkbox" value="true" />
       </label>
     </form>
-    <form id="serverlessOffer" style="display: none;">
+    <form id="serverlessOffer" style="display: none;" onsubmit="return false;">
       <label>
         Paste offer here:
         <textarea name="remoteOffer"></textarea>
+        <button id="remoteOfferScan">Scan QR code</button>
       </label>
     </form>
     <div id="status"></div>
@@ -125,9 +126,12 @@ form label {
       <button id="start" style="display:none;">Start Streaming</button>
       <video id="remoteView" width="100%" autoplay muted style="display:none;"></video>
       <video id="selfView" width="200" height="150" autoplay muted style="display:none;"></video>
+      <video id="qrscan" width="100%" autoplay muted style="display:none;"></video>
     </div>
     <script type="module" >
-      import * as b64 from "./static/js/base64.js";
+    import * as b64 from "./static/js/base64.js";
+    import QrScanner from "./static/js/qr-scanner.min.js";
+    QrScanner.WORKER_PATH = "./static/js/qr-scanner-worker.min.js"
 
     async function initialize() {
       const create = (container, type) => container.appendChild(document.createElement(type));
@@ -149,11 +153,13 @@ form label {
       const qrcodeObj = document.getElementById("qrcodeObj");
       const remoteView = document.getElementById("remoteView");
       const selfView = document.getElementById("selfView");
+      const qrscan = document.getElementById("qrscan");
       const start = document.getElementById("start");
       const unmute = document.getElementById("unmute");
       const form = document.forms["settings"];
       const remoteOfferForm = document.forms["serverlessOffer"];
       const remoteOffer = remoteOfferForm.elements["remoteOffer"];
+      const remoteOfferScan = document.getElementById("remoteOfferScan");
       const localOfferArea = document.getElementById("localOffer");
       const localOfferCopyButton = document.getElementById("copyLocalOffer");
 
@@ -189,8 +195,11 @@ form label {
       }
 
       for (const el of form.elements) {
-        el.addEventListener("change", _ => {
+        el.addEventListener("change", e => {
           window.location.hash = JSON.stringify(readSettingsForm(false));
+          if (e.target.name == 'serverless') {
+            window.location.reload(false);
+          }
         });
       }
 
@@ -400,6 +409,7 @@ form label {
           }
           dc.onopen = e => {
             remoteOffer.disabled = true;
+            remoteOfferScan.disabled = true;
             log("Data channel open, sending settings...")
             settings = readSettingsForm(true);
             sendJson({settings});
@@ -536,10 +546,29 @@ form label {
         pc = createRTCPeerConnection();
         remoteOffer.value = '';
         remoteOffer.onchange = _ => {
-          const decoded = b64.base64ToBytes(remoteOffer.value);
-          const decompressed = compressor.decompress(decoded);
-          receiveMessage({source: 'textarea', data: decompressed});
-        }
+          try {
+            const decoded = b64.base64ToBytes(remoteOffer.value);
+            const decompressed = compressor.decompress(decoded);
+            receiveMessage({source: 'textarea', data: decompressed});
+          } catch (e) {
+            log("Error decoding remote offer: " + e);
+          }
+        };
+        remoteOfferScan.onclick = _ => {
+          qrscan.style.display = '';
+          const qrScanner = new QrScanner(qrscan, (result) => {
+            qrscan.style.display = 'none';
+            log('Decoded qr code.');
+            try {
+              const decompressed = compressor.decompress(new Uint8Array(result.binaryData));
+              receiveMessage({source: 'qr', data: decompressed});
+              qrScanner.destroy();
+            } catch(error) {
+              log('Error interpreting QR code: ' + error);
+            }
+          });
+          qrScanner.start();
+        };
         remoteOfferForm.style.display = '';
       } else {
         receiveMessage({source: 'URL', data: firstMessage});

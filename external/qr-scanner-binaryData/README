@@ -1,0 +1,6 @@
+./qr-scanner-worker.min.js is modified from
+../qr-scanner/qr-scanner-worker.min.js. The only change is that instead
+of returning result.data, it returns result to allow access to
+result.binaryData.
+
+MIT Licensed
