@@ -1,0 +1,6 @@
+[submodule "external/LZMA-JS"]
+	path = external/LZMA-JS
+	url = https://github.com/LZMA-JS/LZMA-JS.git
+[submodule "external/base64.js"]
+	path = external/base64.js
+	url = https://gist.github.com/72c423f727d395eeaa09697058238727.git

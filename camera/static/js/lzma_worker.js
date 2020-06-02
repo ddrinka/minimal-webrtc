@@ -1,0 +1,1 @@
+../../../external/LZMA-JS/src/lzma_worker.js
