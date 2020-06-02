@@ -295,7 +295,7 @@ form label {
           pc.addTrack(track, stream);
         }
       }
-      function startStartingWithErorrHandling(fromButton) {
+      function startStreamingWithErorrHandling(fromButton) {
         startStreaming(fromButton)
           .then(() => {
             log("startStreaming() finished.");
@@ -306,7 +306,7 @@ form label {
       }
 
       start.addEventListener("click", _ => {
-        startStartingWithErorrHandling(true)
+        startStreamingWithErorrHandling(true)
       });
 
       async function receiveMessage(e) {
@@ -316,10 +316,10 @@ form label {
         const data = JSON.parse(e.data);
         if (data.requestSettings) {
           settings = readSettingsForm(true);
-          startStartingWithErorrHandling(false);
+          startStreamingWithErorrHandling(false);
         } else if (data.settings) {
           settings = data.settings;
-          startStartingWithErorrHandling(false);
+          startStreamingWithErorrHandling(false);
         } else if (data.description) {
           await pc.setRemoteDescription(data.description);
           if (data.description.type == "offer") {
