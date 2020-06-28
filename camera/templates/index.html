@@ -373,7 +373,10 @@ form label {
         //  ... but only once icegathering is complete.
         pc.onnegotiationneeded = async function () {
           log("In pc.onnegotiationneeded...");
-          await pc.setLocalDescription(await pc.createOffer());
+          const useOffer = (!settings || !('separateIce' in settings)
+                             || !settings.separateIce);
+          await pc.setLocalDescription(
+                      await (useOffer ? pc.createOffer() : pc.createAnswer()));
           sendOffer();
         }
 
@@ -471,6 +474,10 @@ form label {
           log("Added track.");
           pc.addTrack(track, stream);
         }
+        log('End of startStreaming(), creating answer...');
+        if (settings && 'separateIce' in settings && settings.separateIce) {
+          await pc.setLocalDescription(await pc.createAnswer());
+        }
       }
       function startStreamingWithErorrHandling(fromButton) {
         startStreaming(fromButton)
@@ -502,8 +509,12 @@ form label {
           await pc.setRemoteDescription(data.description);
           if (data.description.type == "offer") {
             log("Got an offer...");
-            await pc.setLocalDescription(await pc.createAnswer());
-            sendOffer();
+            if (!settings || !('separateIce' in settings) || !settings.separateIce) {
+              await pc.setLocalDescription(await pc.createAnswer());
+              sendOffer();
+            } else {
+              log("separateIce mode, so delaying answer.");
+            }
           }
         }
       };
