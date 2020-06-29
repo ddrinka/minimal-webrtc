@@ -480,13 +480,17 @@ form label {
         }
       }
       function startStreamingWithErorrHandling(fromButton) {
-        startStreaming(fromButton)
-          .then(() => {
-            log("startStreaming() finished.");
-          })
-          .catch(e => {
-            log("startStreaming() errored: " + e.message);
-          });
+        try {
+          startStreaming(fromButton)
+            .then(() => {
+              log("startStreaming() finished.");
+            })
+            .catch(e => {
+              log("startStreaming() errored: " + e.message);
+            });
+        } catch (e) {
+          log("Error in startStreaming(): " + e);
+        }
       }
 
       start.addEventListener("click", _ => {
@@ -505,16 +509,20 @@ form label {
           settings = data.settings;
           startStreamingWithErorrHandling(false);
         } else if (data.description) {
-          if (pc == undefined) pc = createRTCPeerConnection();
-          await pc.setRemoteDescription(data.description);
-          if (data.description.type == "offer") {
-            log("Got an offer...");
-            if (!settings || !('separateIce' in settings) || !settings.separateIce) {
-              await pc.setLocalDescription(await pc.createAnswer());
-              sendOffer();
-            } else {
-              log("separateIce mode, so delaying answer.");
+          try {
+            if (pc == undefined) pc = createRTCPeerConnection();
+            await pc.setRemoteDescription(data.description);
+            if (data.description.type == "offer") {
+              log("Got an offer...");
+              if (!settings || !('separateIce' in settings) || !settings.separateIce) {
+                await pc.setLocalDescription(await pc.createAnswer());
+                sendOffer();
+              } else {
+                log("separateIce mode, so delaying answer.");
+              }
             }
+          } catch (e) {
+            log("Error accepting remote offer/answer: " + e);
           }
         }
       };
