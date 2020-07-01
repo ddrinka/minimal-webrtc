@@ -453,7 +453,7 @@ form label {
           : videoSettings == 'true'
             ? true
             : { advanced: [{facingMode: videoSettings}] };
-        log("Created videoConstraints.");
+        log("Created videoConstraints: " + JSON.stringify(videoConstraints));
         if (!videoConstraints && !audioSettings) return;
 
         const stream = videoSettings == 'screen'
