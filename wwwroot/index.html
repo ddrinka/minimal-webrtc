@@ -221,7 +221,7 @@ form label {
         logPre(json);
         const compressed = compressor.compress(json);
         const encoded = b64.bytesToBase64(compressed);
-        displayQRUrl(withHash('^' + encoded));
+        displayQRUrl(withHash('$' + encoded));
       }
       function displayQRCodeForObj(obj) {
         const json = JSON.stringify(obj);
@@ -264,7 +264,7 @@ form label {
         }
       }
       var firstMessage = undefined;
-      if (roomName && roomName.startsWith("#^")) {
+      if (roomName && roomName.startsWith("#$")) {
         roomName = undefined;
         isHost = false;
 
