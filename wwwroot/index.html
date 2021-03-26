@@ -77,10 +77,6 @@ form label {
     </div>
     <form name="settings">
       <label>
-        Serverless mode:
-        <input name="serverless" type="checkbox" value="true" />
-      </label>
-      <label>
         Recieve remote video:
         <select name="client-video">
           <option value="none">none</option>
@@ -197,14 +193,7 @@ form label {
       for (const el of form.elements) {
         el.addEventListener("change", e => {
           window.location.hash = JSON.stringify(readSettingsForm(false));
-          if (e.target.name == 'serverless') {
-            window.location.reload(false);
-          }
         });
-      }
-
-      function isServerless() {
-        return settings && 'serverless' in settings && settings.serverless;
       }
 
       function withHash(hash) {
@@ -287,7 +276,7 @@ form label {
           const decoded = (await getCompressor()).decompress(b64.base64ToBytes(hash.substring(2)));
           logPre(decoded);
           firstMessage = decoded;
-          settings = {serverless: true};
+          settings = {};
         } catch (error) {
           log("Failed to read message from hash: " + error);
         }
@@ -305,23 +294,12 @@ form label {
           return result;
         }
 
-        if (!isServerless()) {
-          roomName = makeid(8);
-          displayQRUrl(withHash(roomName));
-        }
       } else {
-        if (!isServerless()) {
-          roomName = roomName.substring(1);
-        }
         qrcodelink.style.display = 'none';
         form.style.display = 'none';
       }
 
-      if (isServerless()) {
-        log("In serverless mode.");
-      } else {
-        log("Room: " + roomName);
-      }
+      log("In serverless mode.");
 
       var webSocket = undefined;
 
@@ -331,7 +309,7 @@ form label {
         const method = dcReady ? "dataConnection" : "webSocket";
         log("Sending message via " + method + "...");
         logPre(toSend);
-        if (isServerless() && !dcReady) {
+        if (!dcReady) {
           log("ERROR: Attempted to use webSocket in serverless mode.");
           return;
         }
@@ -343,7 +321,7 @@ form label {
 
       function sendOffer() {
         if (pc.iceGatheringState == "complete") {
-          const sendFunc = !isServerless() || dc && dc.readyState == "open"
+          const sendFunc = dc && dc.readyState == "open"
             ? sendJson
             : isHost
               ? displayQRUrlForObj
@@ -551,16 +529,7 @@ form label {
         return webSocket;
       }
 
-      if (!isServerless()) {
-        webSocket = createWebSocket();
-
-        if (!isHost) {
-          // To make serverless and server mode more similar,
-          //  always make the first RTCPeerConnection offer from the host,
-          //  so here just notify the host to start the process.
-          webSocket.onopen = _ => sendJson({ready: true});
-        }
-      } else if (isHost) {
+      if (isHost) {
         await getCompressor();
         pc = createRTCPeerConnection();
         remoteOffer.value = '';
